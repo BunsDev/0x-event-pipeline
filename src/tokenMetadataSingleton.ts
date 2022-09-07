@@ -1,4 +1,6 @@
+import { Producer } from 'kafkajs';
 import { Connection } from 'typeorm';
+import { kafkaSendAsync } from './utils';
 import { TokenMetadata } from './entities';
 
 export class TokenMetadataSingleton {
@@ -25,11 +27,18 @@ export class TokenMetadataSingleton {
         return inputTokens.filter((token) => token !== null && !this.tokens.includes(token.toLowerCase()));
     }
 
-    async saveNewTokenMetadata(connection: Connection, newTokenMetadata: TokenMetadata[]): Promise<void> {
+    async saveNewTokenMetadata(
+        connection: Connection,
+        producer: Producer,
+        newTokenMetadata: TokenMetadata[],
+    ): Promise<void> {
         const queryRunner = connection.createQueryRunner();
         await queryRunner.connect();
         await queryRunner.manager.upsert(TokenMetadata, newTokenMetadata, ['address']);
         await queryRunner.release();
+
         this.tokens = this.tokens.concat(newTokenMetadata.map((token) => token.address));
+
+        kafkaSendAsync(producer, `event-scraper.ethereum.tokens-metadata.v0`, 'address', newTokenMetadata);
     }
 }
